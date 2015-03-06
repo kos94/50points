@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js editor</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+<link href="css/types.css" rel="stylesheet" />
+		<link id="theme" href="css/light.css" rel="stylesheet" />
+
+		<script src="js/libs/three.js"></script>
+		<script src="js/libs/system.min.js"></script>
+
+		<script src="js/libs/EditorControls.js"></script>
+		<script src="js/libs/TransformControls.js"></script>
+
+		<script src="js/libs/SoftwareRenderer.js"></script>
+		<script src="js/libs/SVGRenderer.js"></script>
+
+		<!-- WIP -->
+
+		<script src="js/libs/BufferGeometryUtils.js"></script>
+
+		<script src="js/libs/WebGLRenderer3.js"></script>
+
+		<script src="js/libs/signals.min.js"></script>
+		<script src="js/libs/ui.js"></script>
+		<script src="js/libs/ui.three.js"></script>
+
+		<script src="js/Storage.js"></script>
+
+		<script src="js/Editor.js"></script>
+		<script src="js/Config.js"></script>
+		<script src="js/Loader.js"></script>
+		<script src="js/Viewport.js"></script>
+
+		<script src="script.js"></script>
+	</head>
+	<body>
+		
+
+		<script>
+			window.URL = window.URL || window.webkitURL;
+			window.BlobBuilder = window.BlobBuilder || window.WebKitBlobBuilder || window.MozBlobBuilder;
+
+			var editor = new Editor();
+            var dataEditor = new DataEditor(0);
+            var results = new DataEditor(0x006600);
+
+			var viewport = new Viewport( editor ).setId( 'viewport' );
+			document.body.appendChild( viewport.dom );
+
+			var sidebar = new Sidebar( editor ).setId( 'sidebar' );
+			document.body.appendChild( sidebar.dom );
+
+			//
+
+			editor.setTheme( editor.config.getKey( 'theme' ) );
+
+			document.onkeydown = function ( event ) {
+                if(!event.ctrlKey) {
+                    return;
+                }
+                event.preventDefault();
+				switch ( event.keyCode ) {
+
+					case 65:
+                        dataEditor.addCamera();
+                        break;
+					case 83:
+                        dataEditor.save();
+						break;
+                    case 67:
+                        editor.signals.transformModeChanged.dispatch( 'rotate' );
+                        break;
+                    case 88:
+                        editor.signals.transformModeChanged.dispatch( 'translate' );
+                        break;
+
+				}
+                return false;
+			};
+
+			var onWindowResize = function ( event ) {
+
+				editor.signals.windowResize.dispatch();
+
+			};
+
+			window.addEventListener( 'resize', onWindowResize, false );
+
+			onWindowResize();
+            var light = new THREE.PointLight( 0xff0000, 1, 0);
+            light.position.y = 100;
+            light.position.z = 100;
+            light.position.x = 100;
+            editor.addObject( light );
+            var light = new THREE.PointLight( 0xaa0000, 1, 0);
+            light.position.y = -100;
+            light.position.z = -100;
+            light.position.x = -100;
+            editor.addObject( light );
+		</script>
+	</body>
+</html>

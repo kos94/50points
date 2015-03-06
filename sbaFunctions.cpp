@@ -7,20 +7,18 @@
 #include <sba-1.6/demo/eucsbademo.h>
 #include <sba-1.6/demo/readparams.h>
 #include <QDebug>
-//#include "sba-1.6/sba.h"
-//#include "sba-1.6/compiler.h"
-//#include "sba-1.6/sba_chkjac.h"
-//#include "sba-1.6/demo/eucsbademo.h"
-//#include "sba-1.6/demo/readparams.h"
 
-#include <vector>
-#include <opencv/highgui.h>
-#include <opencv2/highgui/highgui.hpp>
 #include "matrices.h"
+#include "coef.h"
+#include "sbaFunctions.h"
 
+extern cv::Mat matCalibration;
+
+//static void img_projRTS(int j, int i, double *aj, double *bi, double *xij, void *adata);
+//static void img_projRTS_jac(int j, int i, double *aj, double *bi, double *Aij, double *Bij, void *adata);
 static void img_projsRTS_x(double *p, struct sba_crsm *idxij, int *rcidxs, int *rcsubs, double *hx, void *adata);
 static void img_projsRTS_jac_x(double *p, struct sba_crsm *idxij, int *rcidxs, int *rcsubs, double *jac, void *adata);
-
+void showRotationCoefs(double* p, int m, int cnp);
 using namespace std;
 
 struct globs_{
@@ -39,40 +37,56 @@ struct globs_{
   (q)[0]=sqrt(1.0 - (q)[1]*(q)[1] - (q)[2]*(q)[2]- (q)[3]*(q)[3]);  \
 }
 
-void callSBA(int n, int m, vector <vector <cv::Mat> >& points2D, vector <cv::Mat>& points3D)
+double* callSBA(vector <vector <cv::Mat> >& points2D, vector <cv::Mat>& points3D, double* initData, int ncon, int mcon)
 {
-    const int mcon = 0; //n of images with const parameters
-    char vmask[n*m];
+
+    int n = points2D.size();
+    int m = points2D.at(0).size();
+    qDebug()<<n<<" points, "<<m<<" frames\n";
+    char* vmask = new char [n*m];
     const int cnp = 6; //n of camera parameters
     const int pnp = 3; //n of point parameters (3d)
     const int mnp = 2; //n of image point parameters
-    int itmax = 20;                                        //to parameters?
-    double initrot[m*4];
-    double p[m*cnp + n*pnp];
-    double x[n*m*mnp];
-    for (int i=0; i<m*4; i++)
-    {
-        if ( i % 4 == 0)
-            initrot[i] = 1;
-        else
-            initrot[i] = 0;
-    }
+    int itmax = 50;
+    double* initrot = new double[m*4];
+    double* p = new double [m*cnp + n*pnp];
+    double* x = new double [n*m*mnp];
 
     for (int i=0; i<m*n; i++)
         vmask[i] = 1;
-    //cameras params & 3d points coords
-    for (int i=0; i<m*cnp; i++)
-        p[i] = 0;
-    int i1 = m*cnp;
-    for (int i=0; i<n; i++)
+
+    //change with initData
+    if (initData != NULL)
     {
-        p[i1+i*3] = points3D.at(i).at<float>(0,0);
-        p[i1+i*3+1] = points3D.at(i).at<float>(1,0);
-        p[i1+i*3+2] = points3D.at(i).at<float>(2,0);
+        memcpy(p, initData, m * cnp * sizeof(double) );
+    }
+    else
+    {
+        for (int i=0; i<m*cnp; i++)   p[i] = 0;
     }
 
-    qDebug()<<"POINT3\n";
-    //image projections
+    int i1 = m*cnp;
+    pointsToArr(points3D,p,i1);
+
+    qDebug()<<"RECEIVED (converted to quaternions)";
+    printCameraParams(p,m*cnp);
+    printArray("3D POINTS", p+m*cnp, n*pnp, pnp);
+    //init rotation
+    {
+        double* params = p;
+        double* rot = initrot;
+        for(int i = 0; i < m; i++)
+        {
+            rot[1]=params[cnp-6];
+            rot[2]=params[cnp-5];
+            rot[3]=params[cnp-4];
+            rot[0]=sqrt(1.0 - rot[1]*rot[1] - rot[2]*rot[2] - rot[3]*rot[3]);
+            params += cnp;
+            rot += FULLQUATSZ;
+       }
+    }
+
+    //image projections. 2d point matrix: x y t
     for (int i=0; i<n; i++)
     {
         for (int j=0; j<m; j++)
@@ -82,47 +96,68 @@ void callSBA(int n, int m, vector <vector <cv::Mat> >& points2D, vector <cv::Mat
         }
     }
 
-    qDebug()<<"POINT4\n";
+    printArray("X ARRAY", x, n*m*mnp, mnp);
+
     //fill globs struct
     double ical[5],K[9];
-    K[0]=500.0; K[1]=0.0; K[2]=300.0;
-    K[3]=0.0; K[4]=500.0; K[5]=250.0;
-//    K[0]=851.57945; K[1]=0.0; K[2]=330.24755;
-//    K[3]=0.0; K[4]=853.01905; K[5]=262.19500;
+    /* matCalibration:
+     * 500 0   300 0
+     * 0   500 250 0
+     * 0   0   1   0
+     */
+    for (int i=0; i<9; i++)
+    {
+        K[i] = matCalibration.at<float>(i/3,i%3);
+    }
     ical[0]=K[0]; // fu
     ical[1]=K[2]; // u0
     ical[2]=K[5]; // v0
     ical[3]=K[4]/K[0]; // ar
     ical[4]=K[1]; // s
+
     globs.intrcalib=ical;
     globs.ptparams=NULL;
     globs.camparams=NULL;
     globs.cnp = cnp; globs.mnp = mnp; globs.pnp = pnp;
-    globs.rot0params = initrot; // ??????????????????????????????????????
-    //globs.nccalib globs.ncdist - ????????????????????????????????????
+    globs.rot0params = initrot;
+    globs.nccalib=0; //вряд ли нужно
+    globs.ncdist = 0;//вряд ли нужно
     //fill opts & info
-    double opts[SBA_OPTSSZ], info[SBA_INFOSZ];
+    double info[SBA_INFOSZ];
+    double opts[SBA_OPTSSZ];
     opts[0]=SBA_INIT_MU;
     opts[1]=SBA_STOP_THRESH;
     opts[2]=SBA_STOP_THRESH;
     opts[3]=SBA_STOP_THRESH;
-    //opts[3]=0.05*numprojs; // uncomment to force termination if the average reprojection error drops below 0.05
-    opts[4]=0.0;
-    //opts[4]=1E-05; // uncomment to force termination if the relative reduction in the RMS reprojection error drops below 1E-05
-    sba_motstr_levmar_x(n,0,m,mcon,vmask,p,cnp,pnp,x,
+    opts[4]=0;
+//    opts[3]=0.05*m; // uncomment to force termination if the average reprojection error drops below 0.05
+//    opts[4]=0.0;
+//    opts[4]=1E-05; // uncomment to force termination if the relative reduction in the RMS reprojection error drops below 1E-05
+    qDebug()<<"=========== OPTS ===========";
+    qDebug()<<opts[0]<<" "<<opts[1]<<" "<<opts[2]<<" "<<opts[3]<<" "<<opts[4];
+
+    sba_motstr_levmar_x(n,ncon,m,mcon,vmask,p,cnp,pnp,x,
                       NULL,mnp,img_projsRTS_x,img_projsRTS_jac_x,
                       (void*)(&globs), itmax, 0, opts, info);
-    qDebug()<<"m: "<<m<<"cnp: "<<cnp<<"n: "<<n<<"pnp: "<<pnp;
-    for (int i=0; i<m*cnp; i++)
+
+    qDebug()<<"=========== INFO ===========";
+    qDebug()<<info[0]<<" "<<info[1]<<" "<<info[2]<<" "<<info[3]<<" "<<info[4];
+    qDebug()<<info[5]<<" "<<info[6]<<" "<<info[7]<<" "<<info[8]<<" "<<info[9];
+    return p;
+}
+
+// write point coords from (x y z t) matrix to dest array
+void pointsToArr(vector <cv::Mat>& points3D, double* dest, int offset)
+{
+    for (int i=0; i<points3D.size(); i++)
     {
-        if (i % 6 == 0)
-            qDebug()<<"\n==================\nFrame "<<(i/6+1);
-        if (i % 6 < 3)
-            qDebug()<<"--"<<p[i];
-        else
-            qDebug()<<p[i];
+        dest[offset+i*3] = points3D.at(i).at<float>(0,0);
+        dest[offset+i*3+1] = points3D.at(i).at<float>(1,0);
+        dest[offset+i*3+2] = points3D.at(i).at<float>(2,0);
     }
 }
+
+
 /*
  * fast multiplication of the two quaternions in q1 and q2 into p
  * this is the second of the two schemes derived in pg. 8 of
@@ -163,6 +198,37 @@ double t1, t2, t3, t4, t5, t6, t7, t8, t9;
   p[2]=-t3 + t9-t8;
   p[3]=-t4 + t9-t7;
 }
+
+//static void img_projRTS(int j, int i, double *aj, double *bi, double *xij, void *adata)
+//{
+//  double *Kparms, *pr0;
+//  struct globs_ *gl;
+
+//  gl=(struct globs_ *)adata;
+//  Kparms=gl->intrcalib;
+//  pr0=gl->rot0params+j*FULLQUATSZ; // full quat for initial rotation estimate
+
+//  calcImgProj(Kparms, pr0, aj, aj+3, bi, xij); // 3 is the quaternion's vector part length
+//}
+
+///* Given the parameter vectors aj and bi of camera j and point i, computes in Aij, Bij the
+// * jacobian of the predicted projection of point i on image j
+// */
+//static void img_projRTS_jac(int j, int i, double *aj, double *bi, double *Aij, double *Bij, void *adata)
+//{
+//  double *Kparms, *pr0;
+//  struct globs_ *gl;
+
+//  gl=(struct globs_ *)adata;
+//  Kparms=gl->intrcalib;
+//  pr0=gl->rot0params+j*FULLQUATSZ; // full quat for initial rotation estimate
+
+//  calcImgProjJacRTS(Kparms, pr0, aj, aj+3, bi, (double (*)[6])Aij, (double (*)[3])Bij); // 3 is the quaternion's vector part length
+//}
+
+/* BUNDLE ADJUSTMENT FOR CAMERA PARAMETERS ONLY */
+
+
 
 /* Given a parameter vector p made up of the 3D coordinates of n points and the parameters of m cameras, compute in
  * hx the prediction of the measurements, i.e. the projections of 3D points in the m images. The measurements
@@ -208,7 +274,42 @@ static void img_projsRTS_x(double *p, struct sba_crsm *idxij, int *rcidxs, int *
   }
 }
 
+static void img_projsRT_x(double *p, struct sba_crsm *idxij, int *rcidxs, int *rcsubs, double *hx, void *adata)
+{
+  register int i, j;
+  int cnp, pnp, mnp;
+  double *pqr, *pt, *ppt, *pmeas, *Kparms, *ptparams, *pr0, lrot[FULLQUATSZ], trot[FULLQUATSZ];
+  //int n;
+  int m, nnz;
+  struct globs_ *gl;
 
+  gl=(struct globs_ *)adata;
+  cnp=gl->cnp; pnp=gl->pnp; mnp=gl->mnp;
+  Kparms=gl->intrcalib;
+  ptparams=gl->ptparams;
+
+  //n=idxij->nr;
+  m=idxij->nc;
+
+  for(j=0; j<m; ++j){
+    /* j-th camera parameters */
+    pqr=p+j*cnp;
+    pt=pqr+3; // quaternion vector part has 3 elements
+    pr0=gl->rot0params+j*FULLQUATSZ; // full quat for initial rotation estimate
+    _MK_QUAT_FRM_VEC(lrot, pqr);
+    quatMultFast(lrot, pr0, trot); // trot=lrot*pr0
+
+    nnz=sba_crsm_col_elmidxs(idxij, j, rcidxs, rcsubs); /* find nonzero hx_ij, i=0...n-1 */
+
+    for(i=0; i<nnz; ++i){
+        ppt=ptparams + rcsubs[i]*pnp;
+      pmeas=hx + idxij->val[rcidxs[i]]*mnp; // set pmeas to point to hx_ij
+
+      calcImgProjFullR(Kparms, trot, pt, ppt, pmeas); // evaluate Q in pmeas
+      //calcImgProj(Kparms, pr0, pqr, pt, ppt, pmeas); // evaluate Q in pmeas
+    }
+  }
+}
 /* Given a parameter vector p made up of the 3D coordinates of n points and the parameters of m cameras, compute in
  * jac the jacobian of the predicted measurements, i.e. the jacobian of the projections of 3D points in the m images.
  * The jacobian is returned in the order (A_11, ..., A_1m, ..., A_n1, ..., A_nm, B_11, ..., B_1m, ..., B_n1, ..., B_nm),
@@ -216,6 +317,7 @@ static void img_projsRTS_x(double *p, struct sba_crsm *idxij, int *rcidxs, int *
  * Notice that depending on idxij, some of the A_ij, B_ij might be missing
  *
  */
+
 static void img_projsRTS_jac_x(double *p, struct sba_crsm *idxij, int *rcidxs, int *rcsubs, double *jac, void *adata)
 {
   register int i, j;
@@ -254,8 +356,6 @@ static void img_projsRTS_jac_x(double *p, struct sba_crsm *idxij, int *rcidxs, i
 /* Code automatically generated by maple's codegen package */
 
 /* Computation of the predicted projection of a 3D point and its jacobians */
-
-
 #include <math.h>
 void calcImgProj(double a[5],double qr0[4],double v[3],double t[3],double M[3],
 double n[2])
@@ -2595,3 +2695,37 @@ t307;
   }
 }
 
+static void img_projsRT_jac_x(double *p, struct sba_crsm *idxij, int *rcidxs, int *rcsubs, double *jac, void *adata)
+{
+  register int i, j;
+  int cnp, pnp, mnp;
+  double *pqr, *pt, *ppt, *pA, *Kparms, *ptparams, *pr0;
+  //int n;
+  int m, nnz, Asz;
+  struct globs_ *gl;
+
+  gl=(struct globs_ *)adata;
+  cnp=gl->cnp; pnp=gl->pnp; mnp=gl->mnp;
+  Kparms=gl->intrcalib;
+  ptparams=gl->ptparams;
+
+  //n=idxij->nr;
+  m=idxij->nc;
+  Asz=mnp*cnp;
+
+  for(j=0; j<m; ++j){
+    /* j-th camera parameters */
+    pqr=p+j*cnp;
+    pt=pqr+3; // quaternion vector part has 3 elements
+    pr0=gl->rot0params+j*FULLQUATSZ; // full quat for initial rotation estimate
+
+    nnz=sba_crsm_col_elmidxs(idxij, j, rcidxs, rcsubs); /* find nonzero hx_ij, i=0...n-1 */
+
+    for(i=0; i<nnz; ++i){
+      ppt=ptparams + rcsubs[i]*pnp;
+      pA=jac + idxij->val[rcidxs[i]]*Asz; // set pA to point to A_ij
+
+      calcImgProjJacRT(Kparms, pr0, pqr, pt, ppt, (double (*)[6])pA); // evaluate dQ/da in pA
+    }
+  }
+}

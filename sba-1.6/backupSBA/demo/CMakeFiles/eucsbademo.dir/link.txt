@@ -1,0 +1,1 @@
+/usr/bin/gcc      CMakeFiles/eucsbademo.dir/eucsbademo.o CMakeFiles/eucsbademo.dir/imgproj.o CMakeFiles/eucsbademo.dir/readparams.o  -o eucsbademo -rdynamic -L.. -L/home/konstantin/point1/sba-1.6 ../libsba.a -llapack -llibblas -llibf2c -Wl,-rpath,.. 

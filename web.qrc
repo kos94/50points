@@ -1,0 +1,24 @@
+<RCC>
+    <qresource prefix="/">
+        <file>index.html</file>
+        <file>script.js</file>
+        <file>css/light.css</file>
+        <file>css/types.css</file>
+        <file>js/Config.js</file>
+        <file>js/Editor.js</file>
+        <file>js/Loader.js</file>
+        <file>js/Storage.js</file>
+        <file>js/Viewport.js</file>
+        <file>js/libs/BufferGeometryUtils.js</file>
+        <file>js/libs/EditorControls.js</file>
+        <file>js/libs/signals.min.js</file>
+        <file>js/libs/SoftwareRenderer.js</file>
+        <file>js/libs/SVGRenderer.js</file>
+        <file>js/libs/system.min.js</file>
+        <file>js/libs/three.js</file>
+        <file>js/libs/TransformControls.js</file>
+        <file>js/libs/ui.js</file>
+        <file>js/libs/ui.three.js</file>
+        <file>js/libs/WebGLRenderer3.js</file>
+    </qresource>
+</RCC>

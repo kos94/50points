@@ -1,0 +1,2 @@
+/home/konstantin/point1/sba-1.6/demo/CMakeFiles/eucsbademo.dir
+/home/konstantin/point1/sba-1.6/CMakeFiles/sba.dir

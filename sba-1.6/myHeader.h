@@ -1,0 +1,22 @@
+/* contains information necessary for computing a finite difference approximation to a jacobian,
+ * e.g. function to differentiate, problem dimensions and pointers to working memory buffers
+ */
+struct fdj_data_x_ {
+  void (*func)(double *p, struct sba_crsm *idxij, int *rcidxs, int *rcsubs, double *hx, void *adata); /* function to differentiate */
+  int cnp, pnp, mnp;  /* parameter numbers */
+  int *func_rcidxs,
+      *func_rcsubs;   /* working memory for func invocations.
+                       * Notice that this has to be different
+                       * than the working memory used for
+                       * evaluating the jacobian!
+                       */
+  double *hx, *hxx;   /* memory to save results in */
+  void *adata;
+};
+static void sba_fdjac_x(
+    double *p,                /* I: current parameter estimate, (m*cnp+n*pnp)x1 */
+    struct sba_crsm *idxij,   /* I: sparse matrix containing the location of x_ij in hx */
+    int    *rcidxs,           /* work array for the indexes of nonzero elements of a single sparse matrix row/column */
+    int    *rcsubs,           /* work array for the subscripts of nonzero elements in a single sparse matrix row/column */
+    double *jac,              /* O: array for storing the approximated jacobian */
+    void   *dat);              /* I: points to a "fdj_data_x_" structure */
